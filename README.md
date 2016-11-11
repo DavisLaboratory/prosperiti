@@ -18,6 +18,7 @@ Written by Joe Cursons & Melissa Davis. © Springer Science+Business Media LLC 2
 
 ## Documentation
 
+A graphical README to accompany these scripts will be available from the  
 [GitHub project page](http://github.com/DavisLaboratory/PROSPERITI)
 
 
