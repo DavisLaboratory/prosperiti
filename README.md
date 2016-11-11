@@ -1,34 +1,47 @@
 PROSPERITI
 ==========
 
-**pro**tein network **s**ignificance **per**mutat**i**on **t**est**i**ng
+Protein Network Significance Permutation Testing
 ------------------------------------------------
 
-### Accompanying Text
+## Accompanying Text
 
 This python script is designed as a formal example to accompany:
 
-Permutation testing to examine the significance of network features in protein-protein interaction 
-networks. Written by Joe Cursons & Melissa Davis. 
+Proteome Bioinformatics, Methods in Molecular Biology. Edited by Shivakumar Keerthikumar and Suresh Mathivanan.  
+**Chapter 15: Permutation testing to examine the significance of network features in protein-protein interaction networks.**  
+Written by Joe Cursons & Melissa Davis. © Springer Science+Business Media LLC 2017.
 
-Chapter 15 of Methods for Molecular Biology vol. 1549: Proteome Bioinformatics. © Springer.
-Edited by Shivakumar Keerthikumar and Suresh Mathivanan.
-ISBN: 978-1-4939-6738-4
+* ISBN: 978-1-4939-6738-4 
+* DOI: 10.1007/978-1-4939-6740-7_15
 
 
-### Documentation
+## Documentation
 
-A graphical README to accompany these scripts is available from the 
 [GitHub project page](http://github.com/DavisLaboratory/PROSPERITI)
 
 
-### Contacts
+## Data
+This script uses a number of data sources. We would like to acknowledge the researchers involved in the  
+following work, and thank them for making their results/data freely available.
+
+### Protein-protein interactions: PINA (v2.0)
+* [Cowley *et al.*, Nucleic Acids Res., (2012)]( http://dx.doi.org/10.1093/nar/gkr967 )
+* [Data download]( http://cbg.garvan.unsw.edu.au/pina/download/Homo%20sapiens-20140521.tsv )
+
+### Phospho-protein abundance data
+* [Hochgrafe *et al.*, Cancer Res., (2010))]( http://dx.doi.org/10.1158/0008-5472.CAN-10-0911 )
+* [Data download]( http://cancerres.aacrjournals.org/content/70/22/9391/suppl/DC1 )
+
+
+## Contacts
 
 For further information, please contact:
 
-* Dr. Melissa J. Davis - Davis Laboratory, Bioinformatics Division, 
-Walter and Eliza Hall Institute of Medical Research, Australia  
-davis.m@wehi.edu.au
-* Dr. Joe Cursons - Davis Laboratory, Bioinformatics Division, 
-Walter and Eliza Hall Institute of Medical Research, Australia 
-cursons.j@wehi.edu.au
+#### Dr. Melissa J. Davis 
+* Bioinformatics Division, Walter and Eliza Hall Institute of Medical Research, Australia  
+* davis.m (at) wehi.edu.au
+
+#### Dr. Joe Cursons
+* Bioinformatics Division, Walter and Eliza Hall Institute of Medical Research, Australia
+* cursons.j (at) wehi.edu.au
