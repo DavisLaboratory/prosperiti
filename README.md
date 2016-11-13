@@ -15,6 +15,9 @@ Written by Joe Cursons & Melissa Davis. © Springer Science+Business Media LLC 2
 * ISBN: 978-1-4939-6738-4 
 * DOI: 10.1007/978-1-4939-6740-7_15
 
+As this code may change over a time, the specific instance of this code has been generated using Zenodo, and will be available from:
+* [Specific code version]( http://dx.doi.org/10.5281/zenodo.166341 )
+
 
 ## Documentation
 
@@ -32,6 +35,17 @@ This script uses a number of data sources. We would like to acknowledge the rese
 * [Hochgrafe *et al.*, Cancer Res., (2010))]( http://dx.doi.org/10.1158/0008-5472.CAN-10-0911 )
 * [Data download]( http://cancerres.aacrjournals.org/content/70/22/9391/suppl/DC1 ) - Table S3
 
+
+## Dependencies
+This script has a number of dependencies on python packages, and we would like to acknowledge the developers of these packages:
+* [pandas]( http://pandas.pydata.org/ )
+* [numpy]( http://www.numpy.org/ )
+* [networkx]( http://networkx.github.io/ )
+* [matplotlib]( http://matplotlib.org/ )
+* **NB**: for Windows users who wish to use a 64-bit environment, it is recommended to use a pre-compiled set of python packages, such as those provided by:
+  * [WinPython]( http://winpython.github.io/ )
+* For experienced Windows users, you may be able to install from the pre-compiled binaries for individual packages, kindly provided Christoph Gohlke:
+  * [Christoph Gohlke's compiled packages]() http://www.lfd.uci.edu/~gohlke/pythonlibs/ )
 
 ## Contacts
 
