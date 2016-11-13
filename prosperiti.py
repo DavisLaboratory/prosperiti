@@ -5,19 +5,25 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 __author__ = 'Joe Cursons'
-#UniProt IDs are stored in structProteinLists['UniProtLists'][0] -> structProteinLists['UniProtLists'][numConditions-1]
-#NB: the first one [0] contains the background network (all proteins detected across all cell lines)
 #  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # This python script accompanies the book chapter:
-#   Determining the significance of protein network features and attributes using permutation testing.
-#   Chapter X of
-#   TO DO: BOOK DETAILS HERE
+#  Proteome Bioinformatics, Methods in Molecular Biology. Edited by Shivakumar Keerthikumar and Suresh Mathivanan.
+#  Chapter 15: Permutation testing to examine the significance of network features in protein-protein interaction
+#  networks.
+#   Written by Joe Cursons & Melissa Davis.
+#   © Springer Science+Business Media LLC 2017.
+#   ISBN: 978-1-4939-6738-4
+#   DOI: 10.1007/978-1-4939-6740-7_15
 #
 # It has been designed to provide a worked example of how permutation testing can be applied to understand the
 #   significance of network features such as connectivity when examining proteomics data.
 #
-# This script contains a number of functions:
+# Please note that this code may be updated over time as new functionality is added. A version of this script which
+#  has been validated as re-producing the figures from the textbook is available from:
+#   http://dx.doi.org/10.5281/zenodo.166341
+#
+# This script contains several functions to extract and process the input data:
 #
 #
 # These functions are executed over lines
@@ -33,7 +39,7 @@ __author__ = 'Joe Cursons'
 #
 #   http://dx.doi.org/10.1158/0008-5472.CAN-10-0911
 #
-# These data are directly available from:
+# These data (Table S3) are directly available from:
 #   http://cancerres.aacrjournals.org/content/70/22/9391/suppl/DC1
 #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -56,7 +62,7 @@ __author__ = 'Joe Cursons'
 #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-class ProtNetSigPermTest:
+class Extract:
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # function that reads in the Hochgrafe data and exports lists of proteins detected (UniProt IDs) for the specified
@@ -70,7 +76,7 @@ class ProtNetSigPermTest:
     #   strInCellLinesOfInt
     #       string containing the cell line of interest from the Hochgrafe data
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def extractHochgrafeLists(structInHochgrafeData, strInCellLine):
+    def hochgrafe_lists(structInHochgrafeData, strInCellLine):
 
         # determine the index of this cell line within the Hochgrafe data
         listCellLines = structInHochgrafeData['CellLines']
@@ -98,13 +104,15 @@ class ProtNetSigPermTest:
         arrayOutputRows = np.where((arrayProteinDetectedFlag == True) & (arrayListWithMultipleEntryFlag == False))[0]
         arrayCellLineUniProtRows = [structInHochgrafeData['UniProt'][i] for i in arrayOutputRows]
 
-        return {'UniProtBackground':listBackground, 'UniProtListByCondition':arrayCellLineUniProtRows, 'Condition':strInCellLine}
+        return {'UniProtBackground':listBackground, 
+                'UniProtListByCondition':arrayCellLineUniProtRows, 
+                'Condition':strInCellLine}
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # function that specifically loads the protein data (stab_3.xsl) from Hochgrafe et. al (2010) and exports all
     #   listed fields
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def extractSuppTab3(strInFolderPath, flagPerformExtraction):
+    def hochgrafe_supp_table_3(strInFolderPath, flagPerformExtraction):
         # strInFilePointer: absolute folder path for stab_3.xls
         # flagPerformExtraction: Boolean variable specifying whether or not the data file should be re-extracted; or
         #   whether a temporary saved file can be used to reduce run-time
@@ -175,7 +183,7 @@ class ProtNetSigPermTest:
     # function that specifically loads the protein-protein interaction data from PINA v2.0 (through the MI-TAB tsv)
     #   and exports all proteins (UniProt ID and corresponding protein name), together with a connectivity matrix
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def extractPINA2asMITAB(strInFolderPath, flagPerformExtraction):
+    def pina2_mitab(strInFolderPath, flagPerformExtraction):
         # strInFilePointer: absolute folder path for Homo sapiens-20140521.tsv
         # flagPerformExtraction: Boolean variable specifying whether or not the data file should be re-extracted; or
         #   whether a temporary saved file can be used to reduce run-time
@@ -254,12 +262,12 @@ class ProtNetSigPermTest:
 
         return {'HGNC':listOutputProteinHGNCs, 'UniProt':listOutputUniProtIDs, 'arrayIntNetwork':arrayInteractionNetwork}
 
-
+class Build:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # function that specifically loads the protein-protein interaction data from PINA v2.0 (through the MI-TAB tsv)
     #   and exports all proteins (UniProt ID and corresponding protein name), together with a connectivity matrix
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def buildGraph(structInPINANetwork, arrayProteinsInNetwork):
+    def ppi_graph(structInPINANetwork, arrayProteinsInNetwork):
 
         # create the output network
         graphOutputNetwork = nx.Graph()
@@ -283,13 +291,14 @@ class ProtNetSigPermTest:
 
         return graphOutputNetwork
 
+class Test:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # function that
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def testNetworkFeatures(structInPINANetwork, arrayProteinList, numPermTests):
+    def network_features(structInPINANetwork, arrayProteinList, numPermTests):
 
         # extract the corresponding network from the PINA2 data into a NetworkX graph
-        graphNetwork = ProtNetSigPermTest.buildGraph(structInPINANetwork, arrayProteinList)
+        graphNetwork = Build.ppi_graph(structInPINANetwork, arrayProteinList)
         #
         graphNetworkConnected = max(nx.connected_component_subgraphs(graphNetwork), key=len)
         numAvgClustering = nx.average_clustering(graphNetwork)
@@ -304,7 +313,7 @@ class ProtNetSigPermTest:
 
         for iPermTest in range(numPermTests):
             arrayRandUniProtIDs = np.random.choice(structInPINANetwork['UniProt'], numNetworkNodes)
-            graphRandNetworkOfSameSize = ProtNetSigPermTest.buildGraph(structInPINANetwork, arrayRandUniProtIDs)
+            graphRandNetworkOfSameSize = Build.ppi_graph(structInPINANetwork, arrayRandUniProtIDs)
             graphRandNetworkOfSameSizeConnected = max(nx.connected_component_subgraphs(graphRandNetworkOfSameSize), key=len)
 
             numRandNetworkAvgClustering = nx.average_clustering(graphRandNetworkOfSameSize)
@@ -327,7 +336,7 @@ class ProtNetSigPermTest:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # function that
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def calcNetworkCorrelation(structInPINANetwork, structProteinData, numPermTests, flagSkipKnownPPIs):
+    def edge_correlation(structInPINANetwork, structProteinData, numPermTests, flagSkipKnownPPIs):
 
 
         # the Hochgrafe data contain some 'multiple entry' proteins due to peptides with identity across multiple
@@ -352,7 +361,7 @@ class ProtNetSigPermTest:
             arrayProteinData[iRow,:] = arrayAllProteinData[arrayListWithSingleEntryIndices[iRow],:]
 
         # extract the corresponding network from the PINA2 data into a NetworkX graph
-        graphNetwork = ProtNetSigPermTest.buildGraph(structInPINANetwork, listBackground)
+        graphNetwork = Build.ppi_graph(structInPINANetwork, listBackground)
 
         arrayNetworkEdges = graphNetwork.edges()
         arrayEdgeCorr = np.zeros([graphNetwork.number_of_edges(),1], dtype=np.float_)
@@ -433,6 +442,9 @@ class ProtNetSigPermTest:
         return {'arrayEdgeCorr':arrayEdgeCorr,
                 'arrayRandNetworkCorrs':arrayRandNetworkCorrs}
 
+
+#UniProt IDs are stored in structProteinLists['UniProtLists'][0] -> structProteinLists['UniProtLists'][numConditions-1]
+#NB: the first one [0] contains the background network (all proteins detected across all cell lines)
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # execute functions to load the data
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -444,7 +456,7 @@ strCellLineOfInterest = 'MM231'
 
 flagPerformPINA2Extraction = True
 
-numPermTests = 10000
+numPermTests = 100
 
 # define the file system location of the input files
 strDataPath = 'C:\\doc\\methods_in_proteomics'
@@ -457,35 +469,33 @@ if not os.path.exists(strOutputFolder):
     os.makedirs(strOutputFolder)
 
 # extract the specified Hochgrafe data
-structHochgrafeData = ProtNetSigPermTest.extractSuppTab3(strDataPath, flagPerformHochgrafeDataExtraction)
-structProteinLists = ProtNetSigPermTest.extractHochgrafeLists(structHochgrafeData, strCellLineOfInterest)
+structHochgrafeData = Extract.hochgrafe_supp_table_3(strDataPath, flagPerformHochgrafeDataExtraction)
+structProteinLists = Extract.hochgrafe_lists(structHochgrafeData, strCellLineOfInterest)
 
-structPINANetwork = ProtNetSigPermTest.extractPINA2asMITAB(strPINA2Path, flagPerformPINA2Extraction)
+structPINANetwork = Extract.pina2_mitab(strPINA2Path, flagPerformPINA2Extraction)
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # execute data analysis functions and plot the output
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-# structDataCorr = ProtNetSigPermTest.calcNetworkCorrelation(structPINANetwork, structHochgrafeData, numPermTests)
-
 
 # calculate background network statistics
-structBackgroundNetworkStats = ProtNetSigPermTest.testNetworkFeatures(structPINANetwork,
-                                                                      structProteinLists['UniProtBackground'],
-                                                                      numPermTests)
+structBackgroundNetworkStats = Test.network_features(structPINANetwork,
+                                                     structProteinLists['UniProtBackground'],
+                                                     numPermTests)
 
 # calculate conditional network statistics
-structCondNetworkStats = ProtNetSigPermTest.testNetworkFeatures(structPINANetwork,
-                                                                structProteinLists['UniProtListByCondition'],
-                                                                numPermTests)
+structCondNetworkStats = Test.network_features(structPINANetwork,
+                                               structProteinLists['UniProtListByCondition'],
+                                               numPermTests)
 
 # recalculate the average correlations while excluding known PPIs
 flagIgnorePPIs = True
-structDataCorrNoPPIs = ProtNetSigPermTest.calcNetworkCorrelation(structPINANetwork,
-                                                                 structHochgrafeData,
-                                                                 numPermTests,
-                                                                 flagIgnorePPIs)
+structDataCorrNoPPIs = Test.edge_correlation(structPINANetwork,
+                                             structHochgrafeData,
+                                             numPermTests,
+                                             flagIgnorePPIs)
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # plot the output figure
@@ -521,7 +531,7 @@ numDataXRangeForHistBins = max(structBackgroundNetworkStats['arrayRandNetworkCon
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
     arrayAxesHandles[0,0].hist(structBackgroundNetworkStats['arrayRandNetworkConnectedNodes'],
-                               numDataXRangeForHistBins,
+                               np.int(numDataXRangeForHistBins),
                                facecolor='b', edgecolor='b',
                                alpha=0.75, color='b')
 # draw a vertical line for the observed value
@@ -575,7 +585,7 @@ numDataXRangeForHistBins = max(structBackgroundNetworkStats['arrayRandNetworkDia
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
     arrayAxesHandles[0,1].hist(structBackgroundNetworkStats['arrayRandNetworkDiameter'],
-                               numDataXRangeForHistBins, color='b')
+                               np.int(numDataXRangeForHistBins), color='b')
 # draw a vertical line for the observed value
 arrayAxesHandles[0,1].axvline(structBackgroundNetworkStats['numDiameter'], linewidth=3, color='r')
 # label the line with the p-value
@@ -623,7 +633,7 @@ else:
 #  scaled by the number of permutation tests
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
     arrayAxesHandles[0,2].hist(structBackgroundNetworkStats['arrayRandNetworkAvgClustering'],
-                               numPermTests/5, color='b')
+                               np.int(numPermTests/5), color='b')
 # draw a vertical line for the observed value
 arrayAxesHandles[0,2].axvline(structBackgroundNetworkStats['numAvgClustering'], linewidth=3, color='r')
 # label the line with the p-value
@@ -676,7 +686,7 @@ numDataXRangeForHistBins = max(structCondNetworkStats['arrayRandNetworkConnected
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
     arrayAxesHandles[1,0].hist(structCondNetworkStats['arrayRandNetworkConnectedNodes'],
-                               numDataXRangeForHistBins, color='b')
+                               np.int(numDataXRangeForHistBins), color='b')
 # draw a vertical line for the observed value
 arrayAxesHandles[1,0].axvline(structCondNetworkStats['numConnectedNodes'], linewidth=3, color='r')
 # label the line with the p-value
@@ -735,7 +745,7 @@ numDataXRangeForHistBins = max(structCondNetworkStats['arrayRandNetworkDiameter'
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
     arrayAxesHandles[1,1].hist(structCondNetworkStats['arrayRandNetworkDiameter'],
-                               numDataXRangeForHistBins, color='b')
+                               np.int(numDataXRangeForHistBins), color='b')
 
 # draw a vertical line for the observed value
 arrayAxesHandles[1,1].axvline(structCondNetworkStats['numDiameter'],
@@ -784,14 +794,21 @@ else:
 
 # the average clustering value is continuous so produce a histogram for the permutation test distribution with nbins
 #  scaled by the number of permutation tests
-arrayAxesHandles[1,2].hist(structCondNetworkStats['arrayRandNetworkAvgClustering'], numPermTests/5)
+arrayAxesHandles[1,2].hist(structCondNetworkStats['arrayRandNetworkAvgClustering'],
+                           np.int(numPermTests/5))
 
-arrayHistFreq, arrayHistBins, arrayHistPatches = arrayAxesHandles[1,2].hist(structCondNetworkStats['arrayRandNetworkAvgClustering'], numPermTests/5, color='b')
+arrayHistFreq, arrayHistBins, arrayHistPatches = \
+    arrayAxesHandles[1,2].hist(structCondNetworkStats['arrayRandNetworkAvgClustering'],
+                               np.int(numPermTests/5),
+                               color='b')
 # draw a vertical line for the observed value
-arrayAxesHandles[1,2].axvline(structCondNetworkStats['numAvgClustering'], linewidth=3, color='r')
+arrayAxesHandles[1,2].axvline(structCondNetworkStats['numAvgClustering'],
+                              linewidth=3, color='r')
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq[1:])
-arrayAxesHandles[1,2].annotate(('Average clustering\ncoefficient = ' + "{0:.3f}".format(structCondNetworkStats['numAvgClustering']) + ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
+arrayAxesHandles[1,2].annotate(('Average clustering\ncoefficient = ' +
+                                "{0:.3f}".format(structCondNetworkStats['numAvgClustering']) +
+                                ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
                                xy=(structCondNetworkStats['numAvgClustering'], 0.65*np.float(arrayMaxYVal)),
                                xytext=(0.95*np.float(structCondNetworkStats['numAvgClustering']), 0.85*np.float(arrayMaxYVal)),
                                horizontalalignment='right', fontsize=numAnnotationFontSize,
