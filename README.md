@@ -18,13 +18,11 @@ Written by Joe Cursons & Melissa Davis. © Springer Science+Business Media LLC 2
 
 ## Documentation
 
-A graphical README to accompany these scripts will be available from the  
-[GitHub project page](http://github.com/DavisLaboratory/PROSPERITI)
+A graphical README to accompany these scripts will be available from the [GitHub project page](http://github.com/DavisLaboratory/PROSPERITI)
 
 
 ## Data
-This script uses a number of data sources. We would like to acknowledge the researchers involved in the  
-following work, and thank them for making their results/data freely available.
+This script uses a number of data sources. We would like to acknowledge the researchers involved in the following work, and thank them for making their results/data freely available.
 
 ### Protein-protein interactions: PINA (v2.0)
 * [Cowley *et al.*, Nucleic Acids Res., (2012)]( http://dx.doi.org/10.1093/nar/gkr967 )
@@ -32,7 +30,7 @@ following work, and thank them for making their results/data freely available.
 
 ### Phospho-protein abundance data
 * [Hochgrafe *et al.*, Cancer Res., (2010))]( http://dx.doi.org/10.1158/0008-5472.CAN-10-0911 )
-* [Data download]( http://cancerres.aacrjournals.org/content/70/22/9391/suppl/DC1 )
+* [Data download]( http://cancerres.aacrjournals.org/content/70/22/9391/suppl/DC1 ) - Table S3
 
 
 ## Contacts
