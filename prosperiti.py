@@ -85,8 +85,12 @@ __author__ = 'Joe Cursons'
 #
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-class Extract:
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Extract: a set of functions that extract data from specific files used in this analysis
+# # # # # # # # # # # # # # # # #
 
+
+class Extract:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # hochgrafe_lists(): a function that reads in the Hochgrafe data and extracts lists of proteins detected (UniProt
     #                       IDs) for the specified cell lines
@@ -105,11 +109,18 @@ class Extract:
     #       'UniProtListByCondition' - a list of proteins (UniProt ID) detected within the specified condition (cell
     #                                   line) of interest
     # # # # # # # # # # # # # # # # #
-    def hochgrafe_lists(structInHochgrafeData, strInCellLine):
+    def hochgrafe_lists(structInHochgrafeData,
+                        strInCellLine):
 
-        # determine the index of this cell line within the Hochgrafe data
+        # extract the cell line list from the Hochgrafe data dictionary
         listCellLines = structInHochgrafeData['CellLines']
-        numCellLineIndex = listCellLines.index(strInCellLine)
+
+        # for the specified cell line (strInCellLine), determine the index within the Hochgrafe data
+        if strInCellLine in listCellLines:
+            numCellLineIndex = listCellLines.index(strInCellLine)
+        else:
+            print('ERROR: ' + strInCellLine + ' is not present within the specified data, please use ' +
+                  'a member of ' + listCellLines)
 
         # the Hochgrafe data contain some 'multiple entry' proteins due to peptides with identity across multiple
         #  proteins, these 'shared peptide sequences' often map to proteins which form large signalling complexes and
@@ -216,14 +227,22 @@ class Extract:
                 'CellLines':listCellLines,
                 'arrayProtAbund':arrayProtAbund}
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # function that specifically loads the protein-protein interaction data from PINA v2.0 (through the MI-TAB tsv)
-    #   and exports all proteins (UniProt ID and corresponding protein name), together with a connectivity matrix
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # pina2_mitab(): a function that specifically loads the protein-protein interaction data from PINA v2.0 (through
+    #                   the MI-TAB tsv) and exports all proteins (UniProt ID and corresponding protein name), together
+    #                   with the connectivity matrix
+    # Inputs:
+    #   - strInFolderPath: a string containing the os.path readable absolute folder path for Homo sapiens-20140521.tsv
+    #                       from Cowley et al.
+    #   - flagPerformExtraction: a Boolean flag to control whether the data should be extracted, or whether an
+    #                               intermediate saved file can be used
+    # Output:
+    #   - a dictionary/structured array containing:
+    #       'HGNC' - a list of all proteins (HGNC symbol)
+    #       'UniProt' - a list of all proteins (UniProt ID)
+    #       'arrayIntNetwork' - a 2D connectivity matrix (protein*protein) containing the interaction data (edges)
+    # # # # # # # # # # # # # # # # #
     def pina2_mitab(strInFolderPath, flagPerformExtraction):
-        # strInFilePointer: absolute folder path for Homo sapiens-20140521.tsv
-        # flagPerformExtraction: Boolean variable specifying whether or not the data file should be re-extracted; or
-        #   whether a temporary saved file can be used to reduce run-time
 
         # set the input/output file names
         strDataFile = 'Homo sapiens-20140521.tsv'
@@ -297,36 +316,56 @@ class Extract:
                       os.path.join(strInFolderPath, (strOutputSaveFile + '.npz')) +
                       ' does not exist, change flagPerformExtraction')
 
-        return {'HGNC':listOutputProteinHGNCs, 'UniProt':listOutputUniProtIDs, 'arrayIntNetwork':arrayInteractionNetwork}
+        return {'HGNC':listOutputProteinHGNCs,
+                'UniProt':listOutputUniProtIDs,
+                'arrayIntNetwork':arrayInteractionNetwork}
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Build: a set of functions that create networks of various types/with various properties
+# # # # # # # # # # # # # # # # #
+
 
 class Build:
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # function that specifically loads the protein-protein interaction data from PINA v2.0 (through the MI-TAB tsv)
-    #   and exports all proteins (UniProt ID and corresponding protein name), together with a connectivity matrix
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def ppi_graph(structInPINANetwork, arrayProteinsInNetwork):
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # ppi_graph(): a function that takes an input dict/structured array containing the PINA v2.0 PPI information, and
+    #               a list of proteins for building a specific instance of a network
+    #   - structInPINANetwork: a dict/structured array containing the PINA v2.0 information, created by
+    #                           Extract.pina2_mitab()
+    #   - listProteinsInNetwork: a list of proteins (UniProt IDs) which are to be used for construction of the
+    #                               specified network
+    # Output:
+    #   - graphOutputNetwork: a networkx undirected graph containing the network structure (protein-protein
+    #                           interactions) fore the specified protein list
+    # # # # # # # # # # # # # # # # #
+    def ppi_graph(structInPINANetwork, listProteinsInNetwork):
 
         # create the output network
         graphOutputNetwork = nx.Graph()
 
         # populate the output network with the desired proteins
-        graphOutputNetwork.add_nodes_from(arrayProteinsInNetwork)
+        graphOutputNetwork.add_nodes_from(listProteinsInNetwork)
 
         # populate the output network with edges/relationships between the proteins
-        for stringProtOne in arrayProteinsInNetwork:
+        for stringProtOne in listProteinsInNetwork:
             if stringProtOne in structInPINANetwork['UniProt']:
                 numProtOneIndex = list(structInPINANetwork['UniProt']).index(stringProtOne)
                 arrayInteractionPartnerFlag = structInPINANetwork['arrayIntNetwork'][numProtOneIndex,:]
                 arrayInteractionPartnerIndices = np.where(arrayInteractionPartnerFlag)
                 for numProtTwoIndex in arrayInteractionPartnerIndices[0]:
                     stringProtTwo = structInPINANetwork['UniProt'][numProtTwoIndex]
-                    if stringProtTwo in arrayProteinsInNetwork:
+                    if stringProtTwo in listProteinsInNetwork:
                         graphOutputNetwork.add_edge(stringProtOne,stringProtTwo)
             else:
                 # assume that this protein has no known PPIs, move on to the next protein in the list
                 print('warning: ' + stringProtOne + ' can not be found within the protein-protein interaction data')
 
         return graphOutputNetwork
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Test: a set of functions that examine quantitative features associated with network structures using permutation
+#       testing
+# # # # # # # # # # # # # # # # #
+
 
 class Test:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
