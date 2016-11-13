@@ -5,7 +5,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 __author__ = 'Joe Cursons'
-#  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # This python script accompanies the book chapter:
 #  Proteome Bioinformatics, Methods in Molecular Biology. Edited by Shivakumar Keerthikumar and Suresh Mathivanan.
@@ -24,11 +24,32 @@ __author__ = 'Joe Cursons'
 #   http://dx.doi.org/10.5281/zenodo.166341
 #
 # This script contains several functions to extract and process the input data:
+#   class Extract:
+#       --> hochgrafe_lists:
+#       --> hochgrafe_supp_table_3:
+#       --> pina2_mitab:
+#   class Build:
+#       --> ppi_graph:
+#   class Test
+#       --> network_features:
+#       --> edge_correlation:
+#
+# These functions are executed over lines:
 #
 #
-# These functions are executed over lines
-#
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# This script has a number of dependencies on python packages, and we would like to acknowledge the developers of these
+#  packages:
+#   - pandas        ::      http://pandas.pydata.org/
+#   - numpy         ::      http://www.numpy.org/
+#   - networkx      ::      http://networkx.github.io/
+#   - matplotlib    ::      http://matplotlib.org/
+# NB: for Windows users who wish to use a 64-bit environment, it is recommended to use a pre-compiled set of python
+#       packages, such as those provided by:
+#           - WinPython: http://winpython.github.io/
+#   For experienced Windows users, you may be able to install from the pre-compiled binaries for individual packages,
+#       kindly provided Christoph Gohlke
+#           - http://www.lfd.uci.edu/~gohlke/pythonlibs/
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # In this example, we use a published phospho-tyrosine enriched quantitative MS/MS data set:
 #   Hochgrafe F, Zhang L, O'Toole SA, Browne BC, Pinese M, Porta Cubas A, Lehrbach GM, Croucher DR, Rickwood D,
@@ -42,7 +63,7 @@ __author__ = 'Joe Cursons'
 # These data (Table S3) are directly available from:
 #   http://cancerres.aacrjournals.org/content/70/22/9391/suppl/DC1
 #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # In this example, we use a published protein-protein interact data set:
 #   Cowley MJ, Pinese M, Kassahn KS, Waddell N, Pearson JV, Grimmond SM, Biankin AV, Hautaniemi S, Wu J.
@@ -54,28 +75,36 @@ __author__ = 'Joe Cursons'
 # These data are directly available from:
 #   http://cbg.garvan.unsw.edu.au/pina/download/Homo%20sapiens-20140521.tsv
 #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # This python script was written by:
-#       Joe Cursons, University of Melbourne Systems Biology Laboratory - joseph.cursons@unimelb.edu.au
-#       Melissa Davis, Walter and Eliza Hall Institute - melissa.davis@unimelb.edu.au
+#       Joe Cursons, Walter and Eliza Hall Institute
+#           - cursons.j (at) wehi.edu.au
+#       Melissa Davis, Walter and Eliza Hall Institute
+#           - davis.m (at) wehi.edu.au
 #
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
 class Extract:
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # function that reads in the Hochgrafe data and exports lists of proteins detected (UniProt IDs) for the specified
-    #   cell lines
-    # inputs:
-    #   structInHochgrafeData
-    #       'CellLines' - a list of strings referencing the cell lines from the Hochgrafe data set
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # hochgrafe_lists(): a function that reads in the Hochgrafe data and extracts lists of proteins detected (UniProt
+    #                       IDs) for the specified cell lines
+    # Inputs:
+    #   - structInHochgrafeData:
+    #       'CellLines': a list of strings referencing the cell lines from the Hochgrafe data set
     #       'UniProt' - a list of UniProt IDs for detected proteins within the Hockgrafe data
     #       'arrayProtAbund' - a 2D array (numUniProtIDs = numRows; numCellLines = numCols) containing peptide/protein
     #                           abundance data from Hochgrafe et al
-    #   strInCellLinesOfInt
+    #   - strInCellLinesOfInt
     #       string containing the cell line of interest from the Hochgrafe data
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # Output:
+    #   - a dictionary/structured array containing:
+    #       'UniProtBackground' - a list of all proteins (UniProt ID) within the background (across all cell lines
+    #                               examined) network
+    #       'UniProtListByCondition' - a list of proteins (UniProt ID) detected within the specified condition (cell
+    #                                   line) of interest
+    # # # # # # # # # # # # # # # # #
     def hochgrafe_lists(structInHochgrafeData, strInCellLine):
 
         # determine the index of this cell line within the Hochgrafe data
@@ -105,17 +134,25 @@ class Extract:
         arrayCellLineUniProtRows = [structInHochgrafeData['UniProt'][i] for i in arrayOutputRows]
 
         return {'UniProtBackground':listBackground, 
-                'UniProtListByCondition':arrayCellLineUniProtRows, 
-                'Condition':strInCellLine}
+                'UniProtListByCondition':arrayCellLineUniProtRows}
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # function that specifically loads the protein data (stab_3.xsl) from Hochgrafe et. al (2010) and exports all
-    #   listed fields
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # hochgrafe_supp_table_3(): a function that specifically loads the protein data (stab_3.xsl) from Hochgrafe et. al
+    #                           (2010) and extracts all listed fields
+    # Inputs:
+    #   - strInFolderPath: a string containing the os.path readable absolute folder path for stab_3.xls from
+    #                       Hochgrafe et al.
+    #   - flagPerformExtraction: a Boolean flag to control whether the data should be extracted, or whether an
+    #                               intermediate saved file can be used
+    # Output:
+    #   - a dictionary/structured array containing:
+    #       'HGNC' - a list of all proteins (HGNC symbol)
+    #       'UniProt' - a list of all proteins (UniProt ID)
+    #       'CellLines' - a list of cell lines
+    #       'arrayProtAbund' - a 2D array (protein*cell line) containing the protein abundance data
+    # # # # # # # # # # # # # # # # #
     def hochgrafe_supp_table_3(strInFolderPath, flagPerformExtraction):
-        # strInFilePointer: absolute folder path for stab_3.xls
-        # flagPerformExtraction: Boolean variable specifying whether or not the data file should be re-extracted; or
-        #   whether a temporary saved file can be used to reduce run-time
 
         # set the input/output file names
         strDataFile = 'stab_3.xls'
@@ -456,7 +493,7 @@ strCellLineOfInterest = 'MM231'
 
 flagPerformPINA2Extraction = True
 
-numPermTests = 100
+numPermTests = 1000
 
 # define the file system location of the input files
 strDataPath = 'C:\\doc\\methods_in_proteomics'
