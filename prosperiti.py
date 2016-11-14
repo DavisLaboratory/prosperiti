@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
 
 __author__ = 'Joe Cursons'
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -248,6 +249,14 @@ class Extract:
         strDataFile = 'Homo sapiens-20140521.tsv'
         strOutputSaveFile = 'processedPINA2Data'
 
+        # check that the pre-processed data file exists if flagPerformExtraction is set to false
+        if np.bitwise_and((not flagPerformExtraction),
+                          (not os.path.exists(os.path.join(strInFolderPath, (strOutputSaveFile + '.npz'))))):
+            print('warning: flagPerformExtraction is set to False for Extract.pina2_mitab(), however ' +
+                  'the processed data file (' + strOutputSaveFile + ') does not exist at the specified location;' +
+                  'setting flagPerformExtraction = True, which may increase run time')
+            flagPerformExtraction = True
+
         if flagPerformExtraction:
             print('Extracting PINA (v.2.0) database into arrays appropriate for computational analysis')
             # load the file and determine its length
@@ -320,6 +329,7 @@ class Extract:
                 'UniProt':listOutputUniProtIDs,
                 'arrayIntNetwork':arrayInteractionNetwork}
 
+
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Build: a set of functions that create networks of various types/with various properties
 # # # # # # # # # # # # # # # # #
@@ -329,36 +339,44 @@ class Build:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # ppi_graph(): a function that takes an input dict/structured array containing the PINA v2.0 PPI information, and
     #               a list of proteins for building a specific instance of a network
-    #   - structInPINANetwork: a dict/structured array containing the PINA v2.0 information, created by
-    #                           Extract.pina2_mitab()
+    #   - dictInPINANetwork: a dict containing the PINA v2.0 information as interactor lists and a connectivity matrix,
+    #                           as output from Extract.pina2_mitab()
     #   - listProteinsInNetwork: a list of proteins (UniProt IDs) which are to be used for construction of the
     #                               specified network
     # Output:
     #   - graphOutputNetwork: a networkx undirected graph containing the network structure (protein-protein
     #                           interactions) fore the specified protein list
     # # # # # # # # # # # # # # # # #
-    def ppi_graph(structInPINANetwork, listProteinsInNetwork):
+    def ppi_graph(dictInPINANetwork, listProteinsInNetwork):
 
-        # create the output network
+        # initialise a network graph for output
         graphOutputNetwork = nx.Graph()
 
         # populate the output network with the desired proteins
         graphOutputNetwork.add_nodes_from(listProteinsInNetwork)
 
-        # populate the output network with edges/relationships between the proteins
+        # step through every protein within the network
         for stringProtOne in listProteinsInNetwork:
-            if stringProtOne in structInPINANetwork['UniProt']:
-                numProtOneIndex = list(structInPINANetwork['UniProt']).index(stringProtOne)
-                arrayInteractionPartnerFlag = structInPINANetwork['arrayIntNetwork'][numProtOneIndex,:]
+            # look for interactions within the extracted PINA data
+            if stringProtOne in dictInPINANetwork['UniProt']:
+                # if they exist, identify the entry index
+                numProtOneIndex = dictInPINANetwork['UniProt'].index(stringProtOne)
+                # and use this to identify the indices for protein interaction partners
+                arrayInteractionPartnerFlag = dictInPINANetwork['arrayIntNetwork'][numProtOneIndex, :]
                 arrayInteractionPartnerIndices = np.where(arrayInteractionPartnerFlag)
+                # step through all interaction partners
                 for numProtTwoIndex in arrayInteractionPartnerIndices[0]:
-                    stringProtTwo = structInPINANetwork['UniProt'][numProtTwoIndex]
+                    # map from the index to the UniProt identifier
+                    stringProtTwo = dictInPINANetwork['UniProt'][numProtTwoIndex]
                     if stringProtTwo in listProteinsInNetwork:
+                        # create the corresponding edge within the protein-protein interaction network
                         graphOutputNetwork.add_edge(stringProtOne,stringProtTwo)
+
             else:
                 # assume that this protein has no known PPIs, move on to the next protein in the list
                 print('warning: ' + stringProtOne + ' can not be found within the protein-protein interaction data')
 
+        # return the network graph
         return graphOutputNetwork
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -368,40 +386,75 @@ class Build:
 
 
 class Test:
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # function that
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def network_features(structInPINANetwork, arrayProteinList, numPermTests):
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # network_features(): a function that takes a background network, components for a sub-network of interest, and
+    #                       an integer specifying the number of permutation tests; and then quantifies a number of
+    #                       network metrics within the sub-network of interest against the randomly-permuted networks.
+    #   - dictInPINANetwork: a dict containing the PINA v2.0 information as interactor lists and a connectivity matrix,
+    #                           as output from Extract.pina2_mitab()
+    #   - listProteinsForSubnetwork: a list of proteins (UniProt IDs) which are to be used for construction of the
+    #                                   sub-network of interest
+    #   - numPermTests: an integer specifying the number of randomly-permuted network structures to examine for the
+    #                       null distributions of calculated metrics
+    # Output:
+    #   - a dictionary/structured array containing:
+    #       'arrayRandNetworkAvgClustering' - an numPermTests-length vector containing the average clustering
+    #                                           coefficient for randomly permuted networks
+    #       'arrayRandNetworkDiameter' - an numPermTests-length vector containing the diameter for the largest connected
+    #                                       component (subgraph) within the specified sub-network
+    #       'arrayRandNetworkConnectedNodes' - an numPermTests-length vector containing the number of nodes for the
+    #                                           largest connected component (subgraph) within the specified sub-network
+    #       'numAvgClustering' - the average clustering coefficient for the specified sub-network
+    #       'numDiameter' - the diameter for the largest connected component within the specified sub-network
+    #       'numConnectedNodes' - the number of nodes for the largest connected component within the specified
+    #                               sub-network
+    # # # # # # # # # # # # # # # # #
+    def network_features(dictInPINANetwork, listProteinsForSubnetwork, numPermTests):
 
-        # extract the corresponding network from the PINA2 data into a NetworkX graph
-        graphNetwork = Build.ppi_graph(structInPINANetwork, arrayProteinList)
-        #
-        graphNetworkConnected = max(nx.connected_component_subgraphs(graphNetwork), key=len)
+        # build the PPI graph/sub-network for specified nodes
+        graphNetwork = Build.ppi_graph(dictInPINANetwork, listProteinsForSubnetwork)
+        numNetworkNodes = len(listProteinsForSubnetwork)
+
+        # calculate the average clustering coefficient for the defined sub-network
         numAvgClustering = nx.average_clustering(graphNetwork)
+
+        # identify the largest connected subgraph within this network and extract this
+        graphNetworkConnected = max(nx.connected_component_subgraphs(graphNetwork), key=len)
+
+        # calculate the diameter and number of nodes within this largest connected sub-component
         numDiameter = nx.diameter(graphNetworkConnected)
         numConnectedNodes = nx.number_of_nodes(graphNetworkConnected)
 
-        numNetworkNodes = len(arrayProteinList)
-
+        # create output vectors for network metrics from randomly permuted graph structures
         arrayRandNetworkAvgClustering = np.zeros(numPermTests,dtype=np.float_)
         arrayRandNetworkDiameter = np.zeros(numPermTests,dtype=np.int32)
         arrayRandNetworkConnectedNodes = np.zeros(numPermTests,dtype=np.int32)
 
+        # perform the specified number of permutation tests
         for iPermTest in range(numPermTests):
-            arrayRandUniProtIDs = np.random.choice(structInPINANetwork['UniProt'], numNetworkNodes)
-            graphRandNetworkOfSameSize = Build.ppi_graph(structInPINANetwork, arrayRandUniProtIDs)
+            # randomly select a set of UniProt IDs which is of the same size as the original sub-network
+            arrayRandUniProtIDs = np.random.choice(dictInPINANetwork['UniProt'], numNetworkNodes)
+            # and build a graph structure from this
+            graphRandNetworkOfSameSize = Build.ppi_graph(dictInPINANetwork, arrayRandUniProtIDs)
+            # determine the average clustering coefficient for this random network
+            numRandNetworkAvgClustering = nx.average_clustering(graphRandNetworkOfSameSize)
+
+            # identify the largest connected sub-component within this graph
             graphRandNetworkOfSameSizeConnected = max(nx.connected_component_subgraphs(graphRandNetworkOfSameSize), key=len)
 
-            numRandNetworkAvgClustering = nx.average_clustering(graphRandNetworkOfSameSize)
+            # and calculate the diameter and number of nodes for this connected subgraph
             numRandNetworkDiameter = nx.diameter(graphRandNetworkOfSameSizeConnected)
             numRandNetworkConnectedNodes = nx.number_of_nodes(graphRandNetworkOfSameSizeConnected)
 
+            # output to the appropriate arrays
             arrayRandNetworkAvgClustering[iPermTest] = numRandNetworkAvgClustering
             arrayRandNetworkDiameter[iPermTest] = numRandNetworkDiameter
             arrayRandNetworkConnectedNodes[iPermTest] = numRandNetworkConnectedNodes
 
+            # output the permutation test status
             print('permutation test ' + str(iPermTest) + ' of ' + str(numPermTests) + ' completed')
 
+        # return a dictionary containing the specified data under key/value pairs
         return {'arrayRandNetworkAvgClustering':arrayRandNetworkAvgClustering,
                 'arrayRandNetworkDiameter':arrayRandNetworkDiameter,
                 'arrayRandNetworkConnectedNodes':arrayRandNetworkConnectedNodes,
@@ -409,17 +462,35 @@ class Test:
                 'numDiameter':numDiameter,
                 'numConnectedNodes':numConnectedNodes}
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # function that
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    def edge_correlation(structInPINANetwork, structProteinData, numPermTests, flagSkipKnownPPIs):
-
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # edge_correlation(): a function that takes the PINA v2.0 PPI data, together with an array of quantitative data for
+    #                       individual nodes across the network, and calculates the correlation associated with every
+    #                       edge with sufficient observations (hard-coded n > 5). The distribution of correlations is
+    #                       then compared to the distribution calculated from randomly-permuted networks. A Boolean flag
+    #                       controls whether known PPI edges are excluded from the randomly-permuted network structures.
+    #   - dictPINANetwork: a dict containing the PINA v2.0 information as interactor lists and a connectivity matrix,
+    #                       as output from Extract.pina2_mitab()
+    #   - dictProteinData: a dict containing the protein abundance data for calculating correlations (across each edge),
+    #                       as output from Extract.hochgrafe_supp_table_3(); i.e. containing a list of proteins (UniProt
+    #                       IDs), a list of cell lines, and a (protein*cell line) array of (phospho-)protein abundance
+    #   - numPermTests: an integer specifying the number of randomly-permuted network structures to examine for the
+    #                       null distributions of correlations
+    #   - flagSkipKnownPPIs: a Boolean flag to control whether PPIs present within the true data should be skipped when
+    #                           calculating correlations across the random/permuted network
+    # Output:
+    #   - a dictionary/structured array containing:
+    #       'arrayEdgeCorr' - an array containing the edge-wise correlations calculated across all known PPIs with more
+    #                           than five data points present
+    #       'arrayRandNetworkCorrs' - a 2D array containing nPerm sets of edge-wise correlations calculated across the
+    #                                   randomly permuted network structures
+    # # # # # # # # # # # # # # # # #
+    def edge_correlation(dictPINANetwork, dictProteinData, numPermTests, flagSkipKnownPPIs):
 
         # the Hochgrafe data contain some 'multiple entry' proteins due to peptides with identity across multiple
         #  proteins, these 'shared peptide sequences' often map to proteins which form large signalling complexes and
         #  thus these entries are excluded to prevent excess influence upon network statistics (when included multiple
         #  times)
-        listUniProtEntries = structProteinData['UniProt']
+        listUniProtEntries = dictProteinData['UniProt']
         arrayListWithMultipleEntryFlag = np.zeros(len(listUniProtEntries),dtype=np.bool)
         for iEntry in range(len(listUniProtEntries)):
             if '/' in listUniProtEntries[iEntry]:
@@ -427,17 +498,17 @@ class Test:
         arrayListWithSingleEntryIndices = np.where(arrayListWithMultipleEntryFlag == False)[0]
 
         # the background list is simply the full list without any 'multiple entry' components
-        listBackground = [structProteinData['UniProt'][i] for i in arrayListWithSingleEntryIndices]
+        listBackground = [dictProteinData['UniProt'][i] for i in arrayListWithSingleEntryIndices]
 
-        arrayAllProteinData = structProteinData['arrayProtAbund']
-        arrayProteinData = np.zeros((np.size(structProteinData['arrayProtAbund'],0),
-                                     np.size(structProteinData['arrayProtAbund'],1)),
+        arrayAllProteinData = dictProteinData['arrayProtAbund']
+        arrayProteinData = np.zeros((np.size(dictProteinData['arrayProtAbund'], 0),
+                                     np.size(dictProteinData['arrayProtAbund'], 1)),
                                     dtype=np.float_)
         for iRow in range(len(arrayListWithSingleEntryIndices)):
             arrayProteinData[iRow,:] = arrayAllProteinData[arrayListWithSingleEntryIndices[iRow],:]
 
         # extract the corresponding network from the PINA2 data into a NetworkX graph
-        graphNetwork = Build.ppi_graph(structInPINANetwork, listBackground)
+        graphNetwork = Build.ppi_graph(dictPINANetwork, listBackground)
 
         arrayNetworkEdges = graphNetwork.edges()
         arrayEdgeCorr = np.zeros([graphNetwork.number_of_edges(),1], dtype=np.float_)
@@ -518,112 +589,180 @@ class Test:
         return {'arrayEdgeCorr':arrayEdgeCorr,
                 'arrayRandNetworkCorrs':arrayRandNetworkCorrs}
 
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+# In the remainder of this script, a number of settings are specified (as input strings/parameters) and then the
+#  functions defined above are executed to produce Figure 3 within the associated textbook
+#
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# specify all user-defined variables
+# # # # # # # # # # # # # # # # #
 
-#UniProt IDs are stored in structProteinLists['UniProtLists'][0] -> structProteinLists['UniProtLists'][numConditions-1]
-#NB: the first one [0] contains the background network (all proteins detected across all cell lines)
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# execute functions to load the data
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-# control data processing (i.e. load intermediate processed files to decrease run time)
+# Boolean flags that control the execution of data extraction functions (i.e. load intermediate processed files to
+#  decrease run time). Note that extraction of the Hochgrafe data is relatively quick, although if custom data sets are
+#  used this may change. Extraction of the PINA2 data (and formatting as a connectivity matrix) can take some time, and
+#  setting this to false will improve run time.
 flagPerformHochgrafeDataExtraction = True
-stringHochgrafeDataFormat = 'Protein'
-strCellLineOfInterest = 'MM231'
-
 flagPerformPINA2Extraction = True
 
+# a string specifying the cell-line of interest for generating a specific sub-network of interest, and calculating
+#  associated network metrics for the worked example - here we examine the MDA-MB-231 (MM231) breast cancer cell line
+# NB: this string must be part of the cell line set specified by Hochgrafe et al
+strCellLineOfInterest = 'MM231'
+
+# an integer specifying the number of permutation tests; as noted within the associated text, the number of permutation
+#  tests required depends on the desired false discovery rate
 numPermTests = 1000
 
 # define the file system location of the input files
 strDataPath = 'C:\\doc\\methods_in_proteomics'
+# check that the folder exists, if not, generate an error
+if not os.path.exists(strDataPath):
+    print('ERROR: the specified data path (' + strDataPath + ') cannot be found, please modify strDataPath within' +
+          '         the script, or create the folder and place the required data (Hochgrafe et al Table S3) within')
+
 strPINA2Path = 'C:\\db\\pina2'
+# check that the folder exists, if not, generate an error
+if not os.path.exists(strPINA2Path):
+    print('ERROR: the specified data path (' + strDataPath + ') cannot be found, please modify strPINA2Path within' +
+          '         the script, or create the folder and place the required data (PINA v2.0 MITAB file) within')
 
 # define the file system location of the output files
 strOutputFolder = 'C:\\doc\\methods_in_proteomics'
-# check that the folder exists, if not, create
+# check that the folder exists, if not, create it
 if not os.path.exists(strOutputFolder):
     os.makedirs(strOutputFolder)
 
-# extract the specified Hochgrafe data
-structHochgrafeData = Extract.hochgrafe_supp_table_3(strDataPath, flagPerformHochgrafeDataExtraction)
-structProteinLists = Extract.hochgrafe_lists(structHochgrafeData, strCellLineOfInterest)
+# specify the size (inches) of the output figure
+numFigOutWidth = 12
+numFigOutHeight = 8
 
-structPINANetwork = Extract.pina2_mitab(strPINA2Path, flagPerformPINA2Extraction)
+# specify the subplot formatting/layout for the output figure
+numSubPlotRows = 2
+numSubPlotCols = 4
 
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# execute data analysis functions and plot the output
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-
-# calculate background network statistics
-structBackgroundNetworkStats = Test.network_features(structPINANetwork,
-                                                     structProteinLists['UniProtBackground'],
-                                                     numPermTests)
-
-# calculate conditional network statistics
-structCondNetworkStats = Test.network_features(structPINANetwork,
-                                               structProteinLists['UniProtListByCondition'],
-                                               numPermTests)
-
-# recalculate the average correlations while excluding known PPIs
-flagIgnorePPIs = True
-structDataCorrNoPPIs = Test.edge_correlation(structPINANetwork,
-                                             structHochgrafeData,
-                                             numPermTests,
-                                             flagIgnorePPIs)
-
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-# plot the output figure
-# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
+# specify the font-sizes to use for the output plot annotation
 numAnnotationFontSize = 10
 numTitleFontSize = 14
+
+# specify the maximum number of x- and y-axis ticks for the output sub-plots
 numMaxYTicks = 3
 numMaxXTicks = 4
 
 
-# create a multi-panel figure for the final output
-handleFig, arrayAxesHandles = plt.subplots(2,4)
-handleFig.set_size_inches(12, 8)
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# extract the required data
+# # # # # # # # # # # # # # # # #
+
+# extract Table S3 from Hochgrafe et al for the (phospho-)protein abundance data
+dictHochgrafeData = Extract.hochgrafe_supp_table_3(strDataPath, flagPerformHochgrafeDataExtraction)
+
+# extract the full set of proteins detected across all experiments ('UniProtBackground'), and the set of proteins
+#  detected within specified experiment (strCellLineOfInterest --> 'UniProtListByCondition')
+dictProteinLists = Extract.hochgrafe_lists(dictHochgrafeData, strCellLineOfInterest)
+
+# extract the PINA v2.0 protein-protein interaction data
+dictPINANetwork = Extract.pina2_mitab(strPINA2Path, flagPerformPINA2Extraction)
 
 
-# # # # # #
-# plot the background network statistics across the first row
-#   plot the number of connected nodes in the first column --> arrayAxesHandles[0,0]
-# # # # # #
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# calculate network metrics for the background and condition-specific network and their corresponding randomly permuted
+#  networks (of the same size)
+# # # # # # # # # # # # # # # # #
 
-# calculate the empirical p-value
-if all(structBackgroundNetworkStats['arrayRandNetworkConnectedNodes'] < structBackgroundNetworkStats['numConnectedNodes']):
-    numPVal = 1/numPermTests
+# calculate background network statistics
+dictBackgroundNetworkStats = Test.network_features(dictPINANetwork,
+                                                   dictProteinLists['UniProtBackground'],
+                                                   numPermTests)
+
+# calculate conditional network statistics
+dictCondNetworkStats = Test.network_features(dictPINANetwork,
+                                             dictProteinLists['UniProtListByCondition'],
+                                             numPermTests)
+
+# calculate an empirical p-value for significance of the number of connected nodes (within the largest sub-network)
+#  within the full/background network
+if all(dictBackgroundNetworkStats['arrayRandNetworkConnectedNodes'] <
+               dictBackgroundNetworkStats['numConnectedNodes']):
+    # we can't have an empirical p-value of zero, we can only calculate the minimum value for the given number of
+    #  permutation tests, and claim that it is lower than or equal to than this
+    numBackgroundConnNodePVal = 1./np.float(numPermTests)
 else:
-    numAboveVal = np.size(np.where(structBackgroundNetworkStats['arrayRandNetworkConnectedNodes'] >=
-                                   structBackgroundNetworkStats['numConnectedNodes']))
-    numPVal = numAboveVal/numPermTests
+    # the empirical p-value is bounded by the number of background/permuted network metrics which exceed the observed
+    #  value
+    numConnNodeAboveObsVal = np.size(np.where(dictBackgroundNetworkStats['arrayRandNetworkConnectedNodes'] >=
+                                              dictBackgroundNetworkStats['numConnectedNodes']))
+    # and the relative fraction of permuted values which exceed the observed metric
+    numBackgroundConnNodePVal = np.float(numConnNodeAboveObsVal)/np.float(numPermTests)
 
+# calculate an empirical p-value for significance of the network diameter (for the largest sub-network) within the
+#   full/background network
+if all(dictBackgroundNetworkStats['arrayRandNetworkDiameter'] <
+               dictBackgroundNetworkStats['numDiameter']):
+    # calculate the minimum value for the given number of permutation tests
+    numBackgroundDiameterPVal = 1. / np.float(numPermTests)
+else:
+    numDiamAboveObsVal = np.size(np.where(dictBackgroundNetworkStats['arrayRandNetworkDiameter'] >=
+                                          dictBackgroundNetworkStats['numDiameter']))
+    numBackgroundDiameterPVal = np.float(numDiamAboveObsVal) / np.float(numPermTests)
+
+# calculate an empirical p-value for significance of the average network clustering coefficient (for the largest
+#   sub-network) within the full/background network
+if all(dictBackgroundNetworkStats['arrayRandNetworkAvgClustering'] <
+               dictBackgroundNetworkStats['numAvgClustering']):
+    numBackgroundClusteringPVal = 1. / np.float(numPermTests)
+else:
+    numClusteringAboveObsVal = np.size(np.where(dictBackgroundNetworkStats['arrayRandNetworkAvgClustering'] >=
+                                                dictBackgroundNetworkStats['numAvgClustering']))
+    numBackgroundClusteringPVal = np.float(numClusteringAboveObsVal) / np.float(numPermTests)
+
+# recalculate the average correlations while excluding known PPIs
+flagIgnorePPIs = True
+structDataCorrNoPPIs = Test.edge_correlation(dictPINANetwork,
+                                             dictHochgrafeData,
+                                             numPermTests,
+                                             flagIgnorePPIs)
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# create the output figure, plot the metrics for the specified/condition-specific network (MDA-MB-231) against the
+#  corresponding values from the randomly-permuted network, and annotate the figure
+# # # # # # # # # # # # # # # # #
+
+# create a multi-panel figure for the final output
+handleFig, arrayAxesHandles = plt.subplots(numSubPlotRows,numSubPlotCols)
+handleFig.set_size_inches(w=numFigOutWidth, h=numFigOutHeight)
+
+# # # # # # # # # # # # # # # # #
+# plot background network statistics across the first row & number of connected nodes in the first column
+#   --> arrayAxesHandles[0,0]
+# # # # #
 # extract the range of the network connectivity for producing the histogram
-numDataXRangeForHistBins = max(structBackgroundNetworkStats['arrayRandNetworkConnectedNodes']) - \
-                           min(structBackgroundNetworkStats['arrayRandNetworkConnectedNodes'])
-# create the histogram for the permutation test distribution
+numDataXRangeForHistBins = max(dictBackgroundNetworkStats['arrayRandNetworkConnectedNodes']) - \
+                           min(dictBackgroundNetworkStats['arrayRandNetworkConnectedNodes'])
+
+# create the histogram for the permutation test distribution (in blue, with some transparency)
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
-    arrayAxesHandles[0,0].hist(structBackgroundNetworkStats['arrayRandNetworkConnectedNodes'],
+    arrayAxesHandles[0,0].hist(dictBackgroundNetworkStats['arrayRandNetworkConnectedNodes'],
                                np.int(numDataXRangeForHistBins),
                                facecolor='b', edgecolor='b',
                                alpha=0.75, color='b')
-# draw a vertical line for the observed value
-arrayAxesHandles[0,0].axvline(structBackgroundNetworkStats['numConnectedNodes'],
+
+# draw a vertical line for the observed value (in red)
+arrayAxesHandles[0,0].axvline(dictBackgroundNetworkStats['numConnectedNodes'],
                               linewidth=3, color='r')
-# label the line with the p-value
+
+# label the line with the observed value, and the empirical p-value as a measure of significance
 arrayMaxYVal = max(arrayHistFreq)
-arrayAxesHandles[0,0].annotate(('Connected nodes = ' + str(structBackgroundNetworkStats['numConnectedNodes']) +
-                                ';\np-value <= ' + "{0:.4f}".format(numPVal)),
-                               xy=(structBackgroundNetworkStats['numConnectedNodes'],
+arrayAxesHandles[0,0].annotate(('Connected nodes = ' + str(dictBackgroundNetworkStats['numConnectedNodes']) +
+                                ';\np-value <= ' + "{0:.4f}".format(numBackgroundConnNodePVal)),
+                               xy=(dictBackgroundNetworkStats['numConnectedNodes'],
                                    0.65*np.float(arrayMaxYVal)),
-                               xytext=(0.95*np.float(structBackgroundNetworkStats['numConnectedNodes']),
+                               xytext=(0.95*np.float(dictBackgroundNetworkStats['numConnectedNodes']),
                                        0.85*np.float(arrayMaxYVal)),
                                horizontalalignment='right',
                                fontsize=numAnnotationFontSize,
-                               arrowprops=dict(facecolor='black'))
+                               arrowprops=dict(facecolor='black'),
+                               path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 
 # label the plot
 arrayAxesHandles[0,0].set_title('Background network', fontsize=numTitleFontSize)
@@ -637,7 +776,7 @@ arrayAxesHandles[0,0].yaxis.set_major_locator(arrayYTickLoc)
 arrayAxesHandles[0,0].set_ylabel('Frequency', fontsize=numTitleFontSize)
 
 # scale and label the x-axis ticks
-numMaxXVal = max([max(arrayHistBins), structBackgroundNetworkStats['numConnectedNodes']])
+numMaxXVal = max([max(arrayHistBins), dictBackgroundNetworkStats['numConnectedNodes']])
 arrayAxesHandles[0,0].set_xlim(min(arrayHistBins)-0.5, numMaxXVal+0.5)
 arrayXTickLoc = plt.MaxNLocator(numMaxXTicks)
 arrayAxesHandles[0,0].xaxis.set_major_locator(arrayXTickLoc)
@@ -647,34 +786,27 @@ arrayAxesHandles[0,0].xaxis.set_major_locator(arrayXTickLoc)
 #   plot the diameter in the second column --> arrayAxesHandles[0,1]
 # # # # # #
 
-# calculate the empirical p-value
-if all(structBackgroundNetworkStats['arrayRandNetworkDiameter'] < structBackgroundNetworkStats['numDiameter']):
-    numPVal = 1/numPermTests
-else:
-    numAboveVal = np.size(np.where(structBackgroundNetworkStats['arrayRandNetworkDiameter'] >=
-                                   structBackgroundNetworkStats['numDiameter']))
-    numPVal = numAboveVal/numPermTests
-
 # extract the range of the network connectivity for producing the histogram
-numDataXRangeForHistBins = max(structBackgroundNetworkStats['arrayRandNetworkDiameter']) - \
-                           min(structBackgroundNetworkStats['arrayRandNetworkDiameter'])
+numDataXRangeForHistBins = max(dictBackgroundNetworkStats['arrayRandNetworkDiameter']) - \
+                           min(dictBackgroundNetworkStats['arrayRandNetworkDiameter'])
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
-    arrayAxesHandles[0,1].hist(structBackgroundNetworkStats['arrayRandNetworkDiameter'],
+    arrayAxesHandles[0,1].hist(dictBackgroundNetworkStats['arrayRandNetworkDiameter'],
                                np.int(numDataXRangeForHistBins), color='b')
 # draw a vertical line for the observed value
-arrayAxesHandles[0,1].axvline(structBackgroundNetworkStats['numDiameter'], linewidth=3, color='r')
+arrayAxesHandles[0,1].axvline(dictBackgroundNetworkStats['numDiameter'], linewidth=3, color='r')
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq)
-arrayAxesHandles[0,1].annotate(('Diameter = ' + str(structBackgroundNetworkStats['numDiameter']) +
-                                ';\np-value <= ' + "{0:.4f}".format(numPVal)),
-                               xy=(structBackgroundNetworkStats['numDiameter'],
-                                   0.95*np.float(arrayMaxYVal)),
-                               xytext=(1.1*np.float(structBackgroundNetworkStats['numDiameter']),
+arrayAxesHandles[0,1].annotate(('Diameter = ' + str(dictBackgroundNetworkStats['numDiameter']) +
+                                ';\np-value <= ' + "{0:.4f}".format(numBackgroundDiameterPVal)),
+                               xy=(dictBackgroundNetworkStats['numDiameter'],
+                                   0.95 * np.float(arrayMaxYVal)),
+                               xytext=(1.1*np.float(dictBackgroundNetworkStats['numDiameter']),
                                        1.15*np.float(arrayMaxYVal)),
                                horizontalalignment='left',
                                fontsize=numAnnotationFontSize,
-                               arrowprops=dict(facecolor='black'))
+                               arrowprops=dict(facecolor='black'),
+                               path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 
 # label the plot
 arrayAxesHandles[0,1].set_title('Background network', fontsize=numTitleFontSize)
@@ -685,7 +817,7 @@ arrayYTickLoc = plt.MaxNLocator(numMaxYTicks)
 arrayAxesHandles[0,1].yaxis.set_major_locator(arrayYTickLoc)
 
 # scale and label the x-axis ticks
-numMaxXVal = max([max(arrayHistBins), structBackgroundNetworkStats['numDiameter']])
+numMaxXVal = max([max(arrayHistBins), dictBackgroundNetworkStats['numDiameter']])
 arrayAxesHandles[0,1].set_xlim(min(arrayHistBins)-0.5, numMaxXVal+0.5)
 arrayXTickLoc = plt.MaxNLocator(numMaxXTicks)
 arrayAxesHandles[0,1].xaxis.set_major_locator(arrayXTickLoc)
@@ -696,34 +828,26 @@ arrayAxesHandles[0,1].xaxis.set_major_locator(arrayXTickLoc)
 #   plot the average connectivity in the third column --> arrayAxesHandles[0,2]
 # # # # # #
 
-
-# calculate the empirical p-value
-if all(structBackgroundNetworkStats['arrayRandNetworkAvgClustering'] <
-               structBackgroundNetworkStats['numAvgClustering']):
-    numPVal = 1/numPermTests
-else:
-    numAboveVal = np.size(np.where(structBackgroundNetworkStats['arrayRandNetworkAvgClustering'] >=
-                                   structBackgroundNetworkStats['numAvgClustering']))
-    numPVal = numAboveVal/numPermTests
 # the average clustering value is continuous so produce a histogram for the permutation test distribution with nbins
 #  scaled by the number of permutation tests
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
-    arrayAxesHandles[0,2].hist(structBackgroundNetworkStats['arrayRandNetworkAvgClustering'],
-                               np.int(numPermTests/5), color='b')
+    arrayAxesHandles[0,2].hist(dictBackgroundNetworkStats['arrayRandNetworkAvgClustering'],
+                               np.int(numPermTests/5), color='b', edgecolor='b')
 # draw a vertical line for the observed value
-arrayAxesHandles[0,2].axvline(structBackgroundNetworkStats['numAvgClustering'], linewidth=3, color='r')
+arrayAxesHandles[0,2].axvline(dictBackgroundNetworkStats['numAvgClustering'], linewidth=3, color='r')
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq[1:])
 arrayAxesHandles[0,2].annotate(('Average clustering\ncoefficient = ' +
-                                "{0:.3f}".format(structBackgroundNetworkStats['numAvgClustering']) +
-                                ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
-                               xy=(structBackgroundNetworkStats['numAvgClustering'],
-                                   0.65*np.float(arrayMaxYVal)),
-                               xytext=(0.95*np.float(structBackgroundNetworkStats['numAvgClustering']),
+                                "{0:.3f}".format(dictBackgroundNetworkStats['numAvgClustering']) +
+                                ';\n p-value <= ' + "{0:.4f}".format(numBackgroundClusteringPVal)),
+                               xy=(dictBackgroundNetworkStats['numAvgClustering'],
+                                   0.65 * np.float(arrayMaxYVal)),
+                               xytext=(0.95*np.float(dictBackgroundNetworkStats['numAvgClustering']),
                                        0.85*np.float(arrayMaxYVal)),
                                horizontalalignment='right',
                                fontsize=numAnnotationFontSize,
-                               arrowprops=dict(facecolor='black'))
+                               arrowprops=dict(facecolor='black'),
+                               path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 # label the plot
 arrayAxesHandles[0,2].set_title('Background network', fontsize=numTitleFontSize)
 
@@ -733,7 +857,7 @@ arrayYTickLoc = plt.MaxNLocator(numMaxYTicks)
 arrayAxesHandles[0,2].yaxis.set_major_locator(arrayYTickLoc)
 
 # scale and label the x-axis ticks
-numMaxXVal = max([max(arrayHistBins), structBackgroundNetworkStats['numAvgClustering']])
+numMaxXVal = max([max(arrayHistBins), dictBackgroundNetworkStats['numAvgClustering']])
 if min(arrayHistBins) == 0:
     numMinXVal = 0
 else:
@@ -748,34 +872,35 @@ arrayAxesHandles[0,2].xaxis.set_major_locator(arrayXTickLoc)
 # # # # # #
 
 # calculate the empirical p-value
-if all(structCondNetworkStats['arrayRandNetworkConnectedNodes'] <
-               structCondNetworkStats['numConnectedNodes']):
+if all(dictCondNetworkStats['arrayRandNetworkConnectedNodes'] <
+               dictCondNetworkStats['numConnectedNodes']):
     numPVal = 1/numPermTests
 else:
-    numAboveVal = np.size(np.where(structCondNetworkStats['arrayRandNetworkConnectedNodes'] >=
-                                   structCondNetworkStats['numConnectedNodes']))
+    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkConnectedNodes'] >=
+                                   dictCondNetworkStats['numConnectedNodes']))
     numPVal = numAboveVal/numPermTests
 
 # extract the range of the network connectivity for producing the histogram
-numDataXRangeForHistBins = max(structCondNetworkStats['arrayRandNetworkConnectedNodes']) - \
-                           min(structCondNetworkStats['arrayRandNetworkConnectedNodes'])
+numDataXRangeForHistBins = max(dictCondNetworkStats['arrayRandNetworkConnectedNodes']) - \
+                           min(dictCondNetworkStats['arrayRandNetworkConnectedNodes'])
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
-    arrayAxesHandles[1,0].hist(structCondNetworkStats['arrayRandNetworkConnectedNodes'],
-                               np.int(numDataXRangeForHistBins), color='b')
+    arrayAxesHandles[1,0].hist(dictCondNetworkStats['arrayRandNetworkConnectedNodes'],
+                               np.int(numDataXRangeForHistBins), color='b', edgecolor='b')
 # draw a vertical line for the observed value
-arrayAxesHandles[1,0].axvline(structCondNetworkStats['numConnectedNodes'], linewidth=3, color='r')
+arrayAxesHandles[1,0].axvline(dictCondNetworkStats['numConnectedNodes'], linewidth=3, color='r')
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq)
-arrayAxesHandles[1,0].annotate(('Connected nodes = ' + str(structCondNetworkStats['numConnectedNodes']) +
+arrayAxesHandles[1,0].annotate(('Connected nodes = ' + str(dictCondNetworkStats['numConnectedNodes']) +
                                 ';\np-value <= ' + "{0:.4f}".format(numPVal)),
-                               xy=(structCondNetworkStats['numConnectedNodes'],
-                                   0.65*np.float(arrayMaxYVal)),
-                               xytext=(0.95*np.float(structCondNetworkStats['numConnectedNodes']),
+                               xy=(dictCondNetworkStats['numConnectedNodes'],
+                                   0.65 * np.float(arrayMaxYVal)),
+                               xytext=(0.95*np.float(dictCondNetworkStats['numConnectedNodes']),
                                        0.85*np.float(arrayMaxYVal)),
                                horizontalalignment='right',
                                fontsize=numAnnotationFontSize,
-                               arrowprops=dict(facecolor='black'))
+                               arrowprops=dict(facecolor='black'),
+                               path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 
 # label the plot
 arrayAxesHandles[1,0].set_title((strCellLineOfInterest + ' network'),
@@ -791,7 +916,7 @@ arrayAxesHandles[1,0].set_ylabel('Frequency',
                                  fontsize=numTitleFontSize)
 
 # scale and label the x-axis ticks
-numMaxXVal = max([max(arrayHistBins), structCondNetworkStats['numConnectedNodes']])
+numMaxXVal = max([max(arrayHistBins), dictCondNetworkStats['numConnectedNodes']])
 arrayAxesHandles[1,0].set_xlim(min(arrayHistBins)-0.5, numMaxXVal+0.5)
 arrayXTickLoc = plt.MaxNLocator(numMaxXTicks)
 arrayAxesHandles[1,0].xaxis.set_major_locator(arrayXTickLoc)
@@ -807,36 +932,37 @@ arrayAxesHandles[1,0].set_xlabel('Number of connected nodes\nin largest sub-netw
 # # # # # #
 
 # calculate the empirical p-value
-if all(structCondNetworkStats['arrayRandNetworkDiameter'] <
-               structCondNetworkStats['numDiameter']):
+if all(dictCondNetworkStats['arrayRandNetworkDiameter'] <
+               dictCondNetworkStats['numDiameter']):
     numPVal = 1/numPermTests
 else:
-    numAboveVal = np.size(np.where(structCondNetworkStats['arrayRandNetworkDiameter'] >=
-                                   structCondNetworkStats['numDiameter']))
+    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkDiameter'] >=
+                                   dictCondNetworkStats['numDiameter']))
     numPVal = numAboveVal/numPermTests
 
 # extract the range of the diameter for producing the histogram
-numDataXRangeForHistBins = max(structCondNetworkStats['arrayRandNetworkDiameter']) - \
-                           min(structCondNetworkStats['arrayRandNetworkDiameter'])
+numDataXRangeForHistBins = max(dictCondNetworkStats['arrayRandNetworkDiameter']) - \
+                           min(dictCondNetworkStats['arrayRandNetworkDiameter'])
 # create the histogram for the permutation test distribution
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
-    arrayAxesHandles[1,1].hist(structCondNetworkStats['arrayRandNetworkDiameter'],
+    arrayAxesHandles[1,1].hist(dictCondNetworkStats['arrayRandNetworkDiameter'],
                                np.int(numDataXRangeForHistBins), color='b')
 
 # draw a vertical line for the observed value
-arrayAxesHandles[1,1].axvline(structCondNetworkStats['numDiameter'],
+arrayAxesHandles[1,1].axvline(dictCondNetworkStats['numDiameter'],
                               linewidth=3, color='r')
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq)
-arrayAxesHandles[1,1].annotate(('Diameter = ' + str(structCondNetworkStats['numDiameter']) +
+arrayAxesHandles[1,1].annotate(('Diameter = ' + str(dictCondNetworkStats['numDiameter']) +
                                 ';\np-value <= ' + "{0:.4f}".format(numPVal)),
-                               xy=(structCondNetworkStats['numDiameter'],
-                                   0.95*np.float(arrayMaxYVal)),
-                               xytext=(0.95*np.float(structCondNetworkStats['numDiameter']),
+                               xy=(dictCondNetworkStats['numDiameter'],
+                                   0.95 * np.float(arrayMaxYVal)),
+                               xytext=(0.95*np.float(dictCondNetworkStats['numDiameter']),
                                        1.15*np.float(arrayMaxYVal)),
                                horizontalalignment='right',
                                fontsize=numAnnotationFontSize,
-                               arrowprops=dict(facecolor='black'))
+                               arrowprops=dict(facecolor='black'),
+                               path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 
 # label the plot
 arrayAxesHandles[1,1].set_title((strCellLineOfInterest + ' network'),
@@ -848,7 +974,7 @@ arrayYTickLoc = plt.MaxNLocator(numMaxYTicks)
 arrayAxesHandles[1,1].yaxis.set_major_locator(arrayYTickLoc)
 
 # scale and label the x-axis
-numMaxXVal = max([max(arrayHistBins), structCondNetworkStats['numDiameter']])
+numMaxXVal = max([max(arrayHistBins), dictCondNetworkStats['numDiameter']])
 arrayAxesHandles[1,1].set_xlim(min(arrayHistBins)-0.5, numMaxXVal+0.5)
 arrayXTickLoc = plt.MaxNLocator(numMaxXTicks)
 arrayAxesHandles[1,1].xaxis.set_major_locator(arrayXTickLoc)
@@ -862,33 +988,34 @@ arrayAxesHandles[1,1].set_xlabel('Diameter of the\nlargest sub-network', fontsiz
 # # # # # #
 
 # calculate the empirical p-value
-if all(structCondNetworkStats['arrayRandNetworkAvgClustering'] < structCondNetworkStats['numAvgClustering']):
+if all(dictCondNetworkStats['arrayRandNetworkAvgClustering'] < dictCondNetworkStats['numAvgClustering']):
     numPVal = 1/numPermTests
 else:
-    numAboveVal = np.size(np.where(structCondNetworkStats['arrayRandNetworkAvgClustering'] >= structCondNetworkStats['numAvgClustering']))
+    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkAvgClustering'] >= dictCondNetworkStats['numAvgClustering']))
     numPVal = numAboveVal/numPermTests
 
 # the average clustering value is continuous so produce a histogram for the permutation test distribution with nbins
 #  scaled by the number of permutation tests
-arrayAxesHandles[1,2].hist(structCondNetworkStats['arrayRandNetworkAvgClustering'],
+arrayAxesHandles[1,2].hist(dictCondNetworkStats['arrayRandNetworkAvgClustering'],
                            np.int(numPermTests/5))
 
 arrayHistFreq, arrayHistBins, arrayHistPatches = \
-    arrayAxesHandles[1,2].hist(structCondNetworkStats['arrayRandNetworkAvgClustering'],
+    arrayAxesHandles[1,2].hist(dictCondNetworkStats['arrayRandNetworkAvgClustering'],
                                np.int(numPermTests/5),
-                               color='b')
+                               color='b', edgecolor='b')
 # draw a vertical line for the observed value
-arrayAxesHandles[1,2].axvline(structCondNetworkStats['numAvgClustering'],
+arrayAxesHandles[1,2].axvline(dictCondNetworkStats['numAvgClustering'],
                               linewidth=3, color='r')
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq[1:])
 arrayAxesHandles[1,2].annotate(('Average clustering\ncoefficient = ' +
-                                "{0:.3f}".format(structCondNetworkStats['numAvgClustering']) +
+                                "{0:.3f}".format(dictCondNetworkStats['numAvgClustering']) +
                                 ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
-                               xy=(structCondNetworkStats['numAvgClustering'], 0.65*np.float(arrayMaxYVal)),
-                               xytext=(0.95*np.float(structCondNetworkStats['numAvgClustering']), 0.85*np.float(arrayMaxYVal)),
+                               xy=(dictCondNetworkStats['numAvgClustering'], 0.65 * np.float(arrayMaxYVal)),
+                               xytext=(0.95 * np.float(dictCondNetworkStats['numAvgClustering']), 0.85 * np.float(arrayMaxYVal)),
                                horizontalalignment='right', fontsize=numAnnotationFontSize,
-                               arrowprops=dict(facecolor='black'))
+                               arrowprops=dict(facecolor='black'),
+                               path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 
 # label the plot
 arrayAxesHandles[1,2].set_title((strCellLineOfInterest + ' network'), fontsize=numTitleFontSize)
@@ -899,7 +1026,7 @@ arrayYTickLoc = plt.MaxNLocator(numMaxYTicks)
 arrayAxesHandles[1,2].yaxis.set_major_locator(arrayYTickLoc)
 
 # scale and label the x-axis
-numMaxXVal = max([max(arrayHistBins), structCondNetworkStats['numAvgClustering']])
+numMaxXVal = max([max(arrayHistBins), dictCondNetworkStats['numAvgClustering']])
 if min(arrayHistBins) == 0:
     numMinXVal = 0
 else:
@@ -943,7 +1070,7 @@ else:
 #  scaled by the number of permutation tests
 arrayHistFreq, arrayHistBins, arrayHistPatches = arrayAxesHandles[0,3].hist(arrayRandNetworkMeanAbsCorr,
                                                                             np.int(numPermTests/5),
-                                                                            color='b')
+                                                                            color='b', edgecolor='b')
 
 # extract the maximum frequency ignoring the first bins (lots of zeros)
 arrayMaxYVal = max(arrayHistFreq)
@@ -955,7 +1082,8 @@ arrayAxesHandles[0,3].axvline(numMeanAbsCorr, linewidth=3, color='r')
 arrayAxesHandles[0,3].text(numMeanAbsCorr, 1.10*np.float(arrayMaxYVal),
                            ('Average absolute\ncorrelation = ' + "{0:.3f}".format(numMeanAbsCorr) +
                             ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
-                           horizontalalignment='center', fontsize=numAnnotationFontSize)
+                           horizontalalignment='center', fontsize=numAnnotationFontSize,
+                           path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 # set the title
 arrayAxesHandles[0,3].set_title('Background network', fontsize=numTitleFontSize)
 
