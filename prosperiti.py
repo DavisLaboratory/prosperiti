@@ -38,10 +38,10 @@ __author__ = 'Joe Cursons'
 #                               PPI, and use permutation testing to estimate a corresponding null distribution
 #
 # These functions are executed over lines (approx. - will vary over time if I'm too lazy to update):
-#       0600 - 0660: specify parameters (file paths, plotting parameters) for execution
-#       0660 - 0700: execute the functions specified below
-#       0700 - 0790: process the data
-#       0790 - 1135: create and output the figure with the script results
+#       0630 - 0690: specify parameters (file paths, plotting parameters) for execution
+#       0690 - 0730: execute the functions specified below
+#       0730 - 0820: process the data
+#       0820 - 1160: create and output the figure with the script results
 #
 # This script has a number of python package dependencies, and we would like to acknowledge the developers of:
 #   - pandas        ::      http://pandas.pydata.org/
