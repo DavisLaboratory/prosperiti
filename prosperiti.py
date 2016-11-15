@@ -26,30 +26,36 @@ __author__ = 'Joe Cursons'
 #
 # This script contains several functions to extract and process the input data:
 #   class Extract:
-#       --> hochgrafe_lists:
-#       --> hochgrafe_supp_table_3:
-#       --> pina2_mitab:
+#       --> hochgrafe_lists: extracts specific protein lists (UniProt ID) from the Hochgrafe et al data
+#       --> hochgrafe_supp_table_3: extracts Supplementary Table 3 from Hochgrafe et al (2010)
+#       --> pina2_mitab: extracts the PINA v2.0 MITAB file from Cowley et al (2012)
 #   class Build:
-#       --> ppi_graph:
+#       --> ppi_graph: create a networkx graph using UniProt transcript lists
 #   class Test
-#       --> network_features:
-#       --> edge_correlation:
+#       --> network_features: calculate quantitative metrics on the network and perform permutation testing to estimate
+#                               corresponding null distributions
+#       --> edge_correlation: calculate the Pearson's correlation for phospho-protein abundance between edges in the
+#                               PPI, and use permutation testing to estimate a corresponding null distribution
 #
-# These functions are executed over lines:
+# These functions are executed over lines (approx. - will vary over time if I'm too lazy to update):
+#       0600 - 0660: specify parameters (file paths, plotting parameters) for execution
+#       0660 - 0700: execute the functions specified below
+#       0700 - 0790: process the data
+#       0790 - 1135: create and output the figure with the script results
 #
-#
-# This script has a number of dependencies on python packages, and we would like to acknowledge the developers of these
-#  packages:
+# This script has a number of python package dependencies, and we would like to acknowledge the developers of:
 #   - pandas        ::      http://pandas.pydata.org/
 #   - numpy         ::      http://www.numpy.org/
 #   - networkx      ::      http://networkx.github.io/
 #   - matplotlib    ::      http://matplotlib.org/
 # NB: for Windows users who wish to use a 64-bit environment, it is recommended to use a pre-compiled set of python
-#       packages, such as those provided by:
-#           - WinPython: http://winpython.github.io/
-#   For experienced Windows users, you may be able to install from the pre-compiled binaries for individual packages,
-#       kindly provided Christoph Gohlke
+#       packages, such as those provided by WinPython:
+#           - http://winpython.github.io/
+#       or TODO: list a few more python package libraries here
+#     for experienced Windows+python users, you may be able to install from the pre-compiled binaries for individual
+#       packages, kindly provided Christoph Gohlke:
 #           - http://www.lfd.uci.edu/~gohlke/pythonlibs/
+#
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #
 # In this example, we use a published phospho-tyrosine enriched quantitative MS/MS data set:
@@ -145,13 +151,16 @@ class Extract:
         arrayOutputRows = np.where((arrayProteinDetectedFlag == True) & (arrayListWithMultipleEntryFlag == False))[0]
         arrayCellLineUniProtRows = [structInHochgrafeData['UniProt'][i] for i in arrayOutputRows]
 
+        # return the data within a dict containing a key/value pair
         return {'UniProtBackground':listBackground, 
                 'UniProtListByCondition':arrayCellLineUniProtRows}
 
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # hochgrafe_supp_table_3(): a function that specifically loads the protein data (stab_3.xsl) from Hochgrafe et. al
-    #                           (2010) and extracts all listed fields
+    # hochgrafe_supp_table_3(): a function that specifically loads the protein data (stab_3.xls) from Hochgrafe et. al
+    #                           (2010) and extracts all listed fields. Note that this function has hardcoded parameters
+    #                           (padding values within the table) for data extraction, and should be replaced if this
+    #                           script is used in the analysis of other data.
     # Inputs:
     #   - strInFolderPath: a string containing the os.path readable absolute folder path for stab_3.xls from
     #                       Hochgrafe et al.
@@ -194,9 +203,13 @@ class Extract:
             # create a numpy array to store the numerical data
             arrayProtAbund = np.zeros((numTargets, numCellLines), dtype=np.float32)
             for iProt in range(numTargets):
+                # there are header rows --> iProt+7
                 numRow = iProt + 7
+                # extract the data
                 arrayDataRow = dfProteinInfo.iloc[numRow,:].values
+                # step through each value and assign to the appropriate output values
                 for iCol in range(numCellLines):
+                    # there are padding/text columns --> iCol+5
                     arrayProtAbund[iProt,iCol] = np.float32(arrayDataRow[iCol+5])
 
             # save the output arrays using numpy (as this is quicker than reading csv files back in)
@@ -262,46 +275,72 @@ class Extract:
             # load the file and determine its length
             dataFramePINA2 = pd.read_table(os.path.join(strInFolderPath, strDataFile))
 
+            # extract UniProt IDs from the interactorA and interactorB columns
             dataFramePINA2UniProts = dataFramePINA2.loc[:,'ID(s) interactor A':'ID(s) interactor B']
+            # combine (ravel) the vectors and search for a unique set of all UniProt IDs
             arrayUniqueUniProtIDs = pd.unique(dataFramePINA2UniProts.values.ravel())
             numUniqueProts = len(arrayUniqueUniProtIDs)
+            # convert this to a list for indexing
             listUniqueUniProtIDs = list(arrayUniqueUniProtIDs)
 
-            # strip out the 'uniprotkb:' string preceding every entry to get the output list
+            # create output lists for matched UniProt ID/HGNC pairs
             listOutputUniProtIDs = []
             listOutputProteinHGNCs = []
+            # move through every unique UniProt ID
             for stringProtID in arrayUniqueUniProtIDs:
+                # strip out the 'uniprotkb:' prefix
                 arraySplitEntry = stringProtID.split(':')
+                # append to the output list
                 listOutputUniProtIDs.append(arraySplitEntry[1])
 
+                # attempt to also match to a row containing the HGNC symbol
                 strHGNC = 'failed_map'
-                arrayRowIndicesIntA = np.where(dataFramePINA2['ID(s) interactor A'].values == stringProtID)[0]
 
+                # map the UniProt ID to all interactorA values (note that the protein may only appear as interactorB)
+                arrayRowIndicesIntA = np.where(dataFramePINA2['ID(s) interactor A'].values == stringProtID)[0]
+                # check if the UniProt ID could be mapped to the interactorA list
                 if len(arrayRowIndicesIntA) > 0:
+                    # if so, only the first entry is needed
                     numFirstRow = arrayRowIndicesIntA[0]
+                    # from this row, extract the Alt ID (= HGNC symbol)
                     strAltName = dataFramePINA2['Alt. ID(s) interactor A'].iloc[numFirstRow]
+                    # strip out the 'uniprotkb:' prefix
                     arraySplitAlt = strAltName.split(':')
                     strNameAndExtra = arraySplitAlt[1]
+                    # remove the "(gene name)" suffix
                     if strNameAndExtra[-11:] == '(gene name)':
                         strHGNC = strNameAndExtra[0:-11]
 
                 else:
+                    # map the UniProt ID to all interactorB values
                     arrayRowIndicesIntB = np.where(dataFramePINA2['ID(s) interactor B'].values == stringProtID)[0]
+                    # the unique UniProt ID list came from set(interactorA + interactorB), so if it wasn't within
+                    #  interactorA, it must be within interactorB..
+                    # just extract the first row index
                     numFirstRow = arrayRowIndicesIntB[0]
+                    # from this row, extract the Alt ID (= HGNC symbol)
                     strAltName = dataFramePINA2['Alt. ID(s) interactor B'].iloc[numFirstRow]
+                    # strip out the 'uniprotkb:' prefix
                     arraySplitAlt = strAltName.split(':')
                     strNameAndExtra = arraySplitAlt[1]
+                    # remove the "(gene name)" suffix
                     if strNameAndExtra[-11:] == '(gene name)':
                         strHGNC = strNameAndExtra[0:-11]
 
+                # append to the output list
                 listOutputProteinHGNCs.append(strHGNC)
 
+            # create an network interaction matrix
             arrayInteractionNetwork = np.zeros((numUniqueProts,numUniqueProts), dtype=np.bool_)
+            # move through every row of the PINA2 MITAB file
             for iRow in range(len(dataFramePINA2UniProts)):
+                # extract the interactorA/interactorB pairs
                 stringProtA = dataFramePINA2['ID(s) interactor A'][iRow]
                 stringProtB = dataFramePINA2['ID(s) interactor B'][iRow]
+                # determine the protein indices on the matched interaction matrix
                 numRow = listUniqueUniProtIDs.index(stringProtA)
                 numCol = listUniqueUniProtIDs.index(stringProtB)
+                # set the entry to be True if an interaction is present
                 arrayInteractionNetwork[numRow, numCol] = True
 
             # save the output arrays using numpy (as this is quicker than reading csv files back in)
@@ -680,6 +719,18 @@ dictCondNetworkStats = Test.network_features(dictPINANetwork,
                                              dictProteinLists['UniProtListByCondition'],
                                              numPermTests)
 
+# recalculate the average correlations while excluding known PPIs
+flagIgnorePPIs = True
+structDataCorrNoPPIs = Test.edge_correlation(dictPINANetwork,
+                                             dictHochgrafeData,
+                                             numPermTests,
+                                             flagIgnorePPIs)
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# process network metrics and calculate p-values etc for the output figure
+# # # # # # # # # # # # # # # # #
+
 # calculate an empirical p-value for significance of the number of connected nodes (within the largest sub-network)
 #  within the full/background network
 if all(dictBackgroundNetworkStats['arrayRandNetworkConnectedNodes'] <
@@ -695,6 +746,15 @@ else:
     # and the relative fraction of permuted values which exceed the observed metric
     numBackgroundConnNodePVal = np.float(numConnNodeAboveObsVal)/np.float(numPermTests)
 
+# and the condition-specific network number of connected nodes
+if all(dictCondNetworkStats['arrayRandNetworkConnectedNodes'] <
+               dictCondNetworkStats['numConnectedNodes']):
+    numCondSpecConnNodePVal = 1. / np.float(numPermTests)
+else:
+    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkConnectedNodes'] >=
+                                   dictCondNetworkStats['numConnectedNodes']))
+    numCondSpecConnNodePVal = np.float(numAboveVal) / np.float(numPermTests)
+
 # calculate an empirical p-value for significance of the network diameter (for the largest sub-network) within the
 #   full/background network
 if all(dictBackgroundNetworkStats['arrayRandNetworkDiameter'] <
@@ -706,6 +766,15 @@ else:
                                           dictBackgroundNetworkStats['numDiameter']))
     numBackgroundDiameterPVal = np.float(numDiamAboveObsVal) / np.float(numPermTests)
 
+# and the condition-specific network diameter
+if all(dictCondNetworkStats['arrayRandNetworkDiameter'] <
+               dictCondNetworkStats['numDiameter']):
+    numCondSpecDiameterPVal = 1. / np.float(numPermTests)
+else:
+    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkDiameter'] >=
+                                   dictCondNetworkStats['numDiameter']))
+    numCondSpecDiameterPVal = np.float(numAboveVal) / np.float(numPermTests)
+
 # calculate an empirical p-value for significance of the average network clustering coefficient (for the largest
 #   sub-network) within the full/background network
 if all(dictBackgroundNetworkStats['arrayRandNetworkAvgClustering'] <
@@ -716,12 +785,37 @@ else:
                                                 dictBackgroundNetworkStats['numAvgClustering']))
     numBackgroundClusteringPVal = np.float(numClusteringAboveObsVal) / np.float(numPermTests)
 
-# recalculate the average correlations while excluding known PPIs
-flagIgnorePPIs = True
-structDataCorrNoPPIs = Test.edge_correlation(dictPINANetwork,
-                                             dictHochgrafeData,
-                                             numPermTests,
-                                             flagIgnorePPIs)
+# and the condition-specific network average clustering coefficient
+if all(dictCondNetworkStats['arrayRandNetworkAvgClustering'] < dictCondNetworkStats['numAvgClustering']):
+    numCondSpecClusteringPVal = 1. / np.float(numPermTests)
+else:
+    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkAvgClustering'] >=
+                                   dictCondNetworkStats['numAvgClustering']))
+    numCondSpecClusteringPVal = np.float(numAboveVal) / np.float(numPermTests)
+
+
+# calculate the average absolute correlation across the condition-specific network
+arrayNanCorrFlag = np.isnan(structDataCorrNoPPIs['arrayEdgeCorr'])
+arrayNotNanCorrIndexArrays = np.where(arrayNanCorrFlag == False)
+arrayNotNanCorrIndices = arrayNotNanCorrIndexArrays[0]
+numMeanAbsCorr = np.average(abs(structDataCorrNoPPIs['arrayEdgeCorr'][arrayNotNanCorrIndices]))
+
+# calculate the average absolute correlation across each permutation-test network
+arrayRandNetworkMeanAbsCorr = np.zeros(numPermTests, dtype=np.float_)
+for iPermTest in range(numPermTests):
+    arrayRandNetworkCorr = structDataCorrNoPPIs['arrayRandNetworkCorrs'][:,iPermTest]
+    arrayNanCorrFlag = np.isnan(arrayRandNetworkCorr)
+    arrayNotNanCorrIndices = np.where(arrayNanCorrFlag == False)
+    numRandNetworkMeanAbsCorr = np.average(abs(arrayRandNetworkCorr[arrayNotNanCorrIndices]))
+    arrayRandNetworkMeanAbsCorr[iPermTest] = numRandNetworkMeanAbsCorr
+
+# and calculate the empirical p-value
+if all(arrayRandNetworkMeanAbsCorr < numMeanAbsCorr):
+    numBackgroundMeanAbsCorrPVal = 1. / np.float(numPermTests)
+else:
+    numAboveVal = np.size(arrayRandNetworkMeanAbsCorr >= numMeanAbsCorr)
+    numBackgroundMeanAbsCorrPVal = np.float(numAboveVal) / np.float(numPermTests)
+
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # create the output figure, plot the metrics for the specified/condition-specific network (MDA-MB-231) against the
@@ -871,15 +965,6 @@ arrayAxesHandles[0,2].xaxis.set_major_locator(arrayXTickLoc)
 #   plot the number of connected nodes in the first column --> arrayAxesHandles[1,0]
 # # # # # #
 
-# calculate the empirical p-value
-if all(dictCondNetworkStats['arrayRandNetworkConnectedNodes'] <
-               dictCondNetworkStats['numConnectedNodes']):
-    numPVal = 1/numPermTests
-else:
-    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkConnectedNodes'] >=
-                                   dictCondNetworkStats['numConnectedNodes']))
-    numPVal = numAboveVal/numPermTests
-
 # extract the range of the network connectivity for producing the histogram
 numDataXRangeForHistBins = max(dictCondNetworkStats['arrayRandNetworkConnectedNodes']) - \
                            min(dictCondNetworkStats['arrayRandNetworkConnectedNodes'])
@@ -892,7 +977,7 @@ arrayAxesHandles[1,0].axvline(dictCondNetworkStats['numConnectedNodes'], linewid
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq)
 arrayAxesHandles[1,0].annotate(('Connected nodes = ' + str(dictCondNetworkStats['numConnectedNodes']) +
-                                ';\np-value <= ' + "{0:.4f}".format(numPVal)),
+                                ';\np-value <= ' + "{0:.4f}".format(numCondSpecConnNodePVal)),
                                xy=(dictCondNetworkStats['numConnectedNodes'],
                                    0.65 * np.float(arrayMaxYVal)),
                                xytext=(0.95*np.float(dictCondNetworkStats['numConnectedNodes']),
@@ -931,15 +1016,6 @@ arrayAxesHandles[1,0].set_xlabel('Number of connected nodes\nin largest sub-netw
 #   plot the diameter in the second column --> arrayAxesHandles[1,1]
 # # # # # #
 
-# calculate the empirical p-value
-if all(dictCondNetworkStats['arrayRandNetworkDiameter'] <
-               dictCondNetworkStats['numDiameter']):
-    numPVal = 1/numPermTests
-else:
-    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkDiameter'] >=
-                                   dictCondNetworkStats['numDiameter']))
-    numPVal = numAboveVal/numPermTests
-
 # extract the range of the diameter for producing the histogram
 numDataXRangeForHistBins = max(dictCondNetworkStats['arrayRandNetworkDiameter']) - \
                            min(dictCondNetworkStats['arrayRandNetworkDiameter'])
@@ -954,7 +1030,7 @@ arrayAxesHandles[1,1].axvline(dictCondNetworkStats['numDiameter'],
 # label the line with the p-value
 arrayMaxYVal = max(arrayHistFreq)
 arrayAxesHandles[1,1].annotate(('Diameter = ' + str(dictCondNetworkStats['numDiameter']) +
-                                ';\np-value <= ' + "{0:.4f}".format(numPVal)),
+                                ';\np-value <= ' + "{0:.4f}".format(numCondSpecDiameterPVal)),
                                xy=(dictCondNetworkStats['numDiameter'],
                                    0.95 * np.float(arrayMaxYVal)),
                                xytext=(0.95*np.float(dictCondNetworkStats['numDiameter']),
@@ -987,13 +1063,6 @@ arrayAxesHandles[1,1].set_xlabel('Diameter of the\nlargest sub-network', fontsiz
 #   plot the average connectivity in the third column --> arrayAxesHandles[1,2]
 # # # # # #
 
-# calculate the empirical p-value
-if all(dictCondNetworkStats['arrayRandNetworkAvgClustering'] < dictCondNetworkStats['numAvgClustering']):
-    numPVal = 1/numPermTests
-else:
-    numAboveVal = np.size(np.where(dictCondNetworkStats['arrayRandNetworkAvgClustering'] >= dictCondNetworkStats['numAvgClustering']))
-    numPVal = numAboveVal/numPermTests
-
 # the average clustering value is continuous so produce a histogram for the permutation test distribution with nbins
 #  scaled by the number of permutation tests
 arrayAxesHandles[1,2].hist(dictCondNetworkStats['arrayRandNetworkAvgClustering'],
@@ -1010,7 +1079,7 @@ arrayAxesHandles[1,2].axvline(dictCondNetworkStats['numAvgClustering'],
 arrayMaxYVal = max(arrayHistFreq[1:])
 arrayAxesHandles[1,2].annotate(('Average clustering\ncoefficient = ' +
                                 "{0:.3f}".format(dictCondNetworkStats['numAvgClustering']) +
-                                ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
+                                ';\n p-value <= ' + "{0:.4f}".format(numCondSpecClusteringPVal)),
                                xy=(dictCondNetworkStats['numAvgClustering'], 0.65 * np.float(arrayMaxYVal)),
                                xytext=(0.95 * np.float(dictCondNetworkStats['numAvgClustering']), 0.85 * np.float(arrayMaxYVal)),
                                horizontalalignment='right', fontsize=numAnnotationFontSize,
@@ -1044,28 +1113,6 @@ arrayAxesHandles[1,2].set_xlabel('Average clustering\ncoefficient', fontsize=num
 #   plot the average absolute correlation in the fourth column --> arrayAxesHandles[0,3]
 # # # # # #
 
-# calculate the average absolute correlation across the condition-specific network
-arrayNanCorrFlag = np.isnan(structDataCorrNoPPIs['arrayEdgeCorr'])
-arrayNotNanCorrIndexArrays = np.where(arrayNanCorrFlag == False)
-arrayNotNanCorrIndices = arrayNotNanCorrIndexArrays[0]
-numMeanAbsCorr = np.average(abs(structDataCorrNoPPIs['arrayEdgeCorr'][arrayNotNanCorrIndices]))
-
-# calculate the average absolute correlation across each permutation-test network
-arrayRandNetworkMeanAbsCorr = np.zeros(numPermTests, dtype=np.float_)
-for iPermTest in range(numPermTests):
-    arrayRandNetworkCorr = structDataCorrNoPPIs['arrayRandNetworkCorrs'][:,iPermTest]
-    arrayNanCorrFlag = np.isnan(arrayRandNetworkCorr)
-    arrayNotNanCorrIndices = np.where(arrayNanCorrFlag == False)
-    numRandNetworkMeanAbsCorr = np.average(abs(arrayRandNetworkCorr[arrayNotNanCorrIndices]))
-    arrayRandNetworkMeanAbsCorr[iPermTest] = numRandNetworkMeanAbsCorr
-
-# calculate the empirical p-value
-if all(arrayRandNetworkMeanAbsCorr < numMeanAbsCorr):
-    numPVal = 1/numPermTests
-else:
-    numAboveVal = np.size(arrayRandNetworkMeanAbsCorr >= numMeanAbsCorr)
-    numPVal = numAboveVal/numPermTests
-
 # the average clustering value is continuous so produce a histogram for the permutation test distribution with nbins
 #  scaled by the number of permutation tests
 arrayHistFreq, arrayHistBins, arrayHistPatches = arrayAxesHandles[0,3].hist(arrayRandNetworkMeanAbsCorr,
@@ -1079,9 +1126,9 @@ arrayMaxYVal = max(arrayHistFreq)
 arrayAxesHandles[0,3].axvline(numMeanAbsCorr, linewidth=3, color='r')
 # label the line with the p-value
 
-arrayAxesHandles[0,3].text(numMeanAbsCorr, 1.10*np.float(arrayMaxYVal),
+arrayAxesHandles[0,3].text(numMeanAbsCorr, 1.10 * np.float(arrayMaxYVal),
                            ('Average absolute\ncorrelation = ' + "{0:.3f}".format(numMeanAbsCorr) +
-                            ';\n p-value <= ' + "{0:.4f}".format(numPVal)),
+                            ';\n p-value <= ' + "{0:.4f}".format(numBackgroundMeanAbsCorrPVal)),
                            horizontalalignment='center', fontsize=numAnnotationFontSize,
                            path_effects=[path_effects.withStroke(linewidth=2,foreground="w")])
 # set the title
